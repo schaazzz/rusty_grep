@@ -1,0 +1,12 @@
+[package]
+name = "rusty_grep"
+version = "0.1.0"
+authors = ["Shahzeb Ihsan <shahzeb@gmail.com>"]
+edition = "2018"
+description = "RustyGREP: An academic exercise to develop a GREP clone in Rust."
+
+[dependencies]
+getopts = "0.2.21"
+regex = "1.4.2"
+termcolor = "1.1"
+wild = "2.0.4"
