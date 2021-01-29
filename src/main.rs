@@ -3,11 +3,12 @@ extern crate wild;
 
 use std::io::{ self };
 use std::env;
-use std::thread;
-use std::sync::mpsc;
-use getopts::Options;
-use std::time::Duration;
+use getopts::{ Options };
+use std::thread::{ self, JoinHandle };
+use std::sync::{ atomic::{ Ordering, AtomicBool }, mpsc::{ channel, Sender, Receiver }, Arc, Mutex };
 
+mod line_grep;
+use line_grep::{ LineGrep };
 mod line_src;
 use line_src::{ LineSource, LinesFromStdin, LinesFromFiles };
 
@@ -16,7 +17,7 @@ const DESCRIPTION: &'static str = env!("CARGO_PKG_DESCRIPTION");
 const AUTHORS: &'static str = env!("CARGO_PKG_AUTHORS");
 
 #[derive(Debug)]
-struct GrepArgs {
+struct Config {
     extended_regex: bool,
     ignore_case: bool,
     print_line_nums: bool,
@@ -44,7 +45,7 @@ fn print_usage(opts: &Options) {
     println!("---");
 }
 
-fn parse_args(args: &[String]) -> Option<GrepArgs> {
+fn parse_args(args: &[String]) -> Option<Config> {
     let mut opts = Options::new();
     opts.optflag("E", "", "PATTERNS are extended regular expressions");
     opts.optflag("i", "", "ignore case distinctions in patterns and data");
@@ -52,12 +53,12 @@ fn parse_args(args: &[String]) -> Option<GrepArgs> {
     opts.optflag("", "color", "use markers to highlight the matching strings");
     opts.optflag("", "help", "Print this help menu");
 
-    let mut grep_args = GrepArgs {
+    let mut config = Config {
         extended_regex: false,
         ignore_case: false,
         print_line_nums: false,
         use_color: false,
-        pattern: Some("".to_string()),
+        pattern: None,
         files: Vec::<String>::new(),
     };
 
@@ -75,64 +76,115 @@ fn parse_args(args: &[String]) -> Option<GrepArgs> {
     }
 
     if matches.opt_present("E") {
-        grep_args.extended_regex = true;
+        config.extended_regex = true;
     }
 
     if matches.opt_present("i") {
-        grep_args.ignore_case = true;
+        config.ignore_case = true;
     }
 
     if matches.opt_present("n") {
-        grep_args.print_line_nums = true;
+        config.print_line_nums = true;
     }
 
     if matches.opt_present("color") {
-        grep_args.use_color = true;
+        config.use_color = true;
     }
 
     if matches.free.is_empty() {
         println!("this is wrong!");
     }
     else {
-        grep_args.pattern = Some(matches.free[0].to_string());
+        config.pattern = Some(matches.free[0].to_string());
 
         for f in &matches.free[1..] {
-            grep_args.files.push(f.to_string());
+            config.files.push(f.to_string());
         }
     }
 
-    Some(grep_args)
+    Some(config)
 }
 
-fn main() -> std::io::Result <()> {
-    //loop {
-    //    let mut input = String::new();
-    //    io::stdin()
-    //        .read_line(&mut input)
-    //        .expect("failed to read from pipe");
-    //    input = input.trim().to_string();
-    //    if input == "" {
-    //        break;
-    //    }
-    //    println!("Pipe output: {}", input);
-    //}
-    let args: Vec<String> = wild::args().collect();
-    let mut grep_args = parse_args(&args[1..]).unwrap();
+fn  process(source: impl LineSource, pattern: String) {
+    let mut grep = LineGrep::new(pattern);
+    let flag_done = Arc::new(AtomicBool::new(false));
+    let flag_exit = Arc::clone(&flag_done);
 
-    let handle = io::stdin();
-    let mut source: Box<dyn LineSource>;
-    
-    if grep_args.files.is_empty() {
-        source = Box::new(LinesFromStdin::new(&handle));
-    }
-    else {
-        source = Box::new(LinesFromFiles::new(&mut grep_args.files));
-    }
+    let (main_tx_channel, main_rx_channel): (Sender<String>, Receiver<String>) = channel();
+    let (thread_tx_channel, thread_rx_channel): (Sender<String>, Receiver<String>) = channel();
+    let join_handle: JoinHandle<()> = thread::spawn(move || {
+        loop {
+            if let Ok(line) = thread_rx_channel.try_recv() {
+                grep.feed(line);
+                main_tx_channel.send("yakitori".to_string()).expect("Error: Sending from grep to main thread failed!");
+            }
+
+            if flag_exit.load(Ordering::Acquire) {
+                break;
+            }
+
+        }
+    });
 
     for line in source {
-        println!("line: {:?}", line);
-        thread::sleep(Duration::from_millis(25));
+        thread_tx_channel.send(line).expect("Error: Sending from grep to main thread failed!");
+        let result = main_rx_channel.recv().expect("Error: Receiving in main thread failed!");
+        println!("result: {}", result);
     }
 
+    flag_done.store(true, Ordering::Release);
+    join_handle.join().unwrap();
+}
+
+fn main() -> std::io::Result <()>{
+    let args: Vec<String> = wild::args().collect();
+    let mut config = parse_args(&args[1..]).unwrap();
+
+    let stdin_handle = io::stdin();
+
+    if config.files.is_empty() {
+        process(LinesFromStdin::new(&stdin_handle), config.pattern.unwrap());
+    }
+    else {
+        process(LinesFromFiles::new(&mut config.files), config.pattern.unwrap());
+    }
+
+    /*
+    let mut grep: LineGrep;
+    if let Some(pattern) = config.pattern {
+        grep = LineGrep::new(pattern);
+    }
+    else {
+        panic!("lakht pakht");
+    }
+
+    let flag_done = Arc::new(AtomicBool::new(false));
+    let flag_exit = Arc::clone(&flag_done);
+
+    let (main_tx_channel, main_rx_channel): (Sender<String>, Receiver<String>) = channel();
+    let (thread_tx_channel, thread_rx_channel): (Sender<String>, Receiver<String>) = channel();
+    let join_handle: JoinHandle<()> = thread::spawn(move || {
+        loop {
+            if let Ok(line) = thread_rx_channel.try_recv() {
+                grep.feed(line);
+                main_tx_channel.send("yakitori".to_string()).expect("Error: Sending from grep to main thread failed!");
+            }
+
+            if flag_exit.load(Ordering::Acquire) {
+                break;
+            }
+
+        }
+    });
+
+    for line in source {
+        thread_tx_channel.send(line).expect("Error: Sending from grep to main thread failed!");
+        let result = main_rx_channel.recv().expect("Error: Receiving in main thread failed!");
+        println!("result: {}", result);
+    }
+
+    flag_done.store(true, Ordering::Release);
+    join_handle.join().unwrap();
+    */
     Ok(())
 }

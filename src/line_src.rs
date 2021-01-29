@@ -1,6 +1,6 @@
 use std::path::Path;
-use std::fs::{ self, metadata, File };
-use std::io::{ self, Read, BufRead, Seek, SeekFrom, BufReader };
+use std::fs::{ metadata, File };
+use std::io::{ self, Read, BufRead, BufReader };
 
 pub trait LineSource: Iterator<Item = String> {
     fn produce(&mut self) -> Option<String>;
@@ -44,7 +44,6 @@ impl<'a> Iterator for LinesFromStdin<'a> {
 pub struct LinesFromFiles<'b> {
     files: &'b mut Vec<String>,
     reader: Option<BufReader<File>>,
-    //lines: Option<std::io::Lines<std::io::BufReader<std::fs::File>>>,
 }
 
 impl<'b> LinesFromFiles<'b> {
