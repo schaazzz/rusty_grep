@@ -2,22 +2,23 @@ use std::path::Path;
 use std::fs::{ metadata, File };
 use std::io::{ self, Read, BufRead, BufReader };
 
-pub trait LineSource: Iterator<Item = String> {
-    fn produce(&mut self) -> Option<String>;
+pub trait LineSource: Iterator<Item = (String, u32, String)> {
+    fn produce(&mut self) -> Option<(String, u32, String)>;
 }
 
 pub struct LinesFromStdin<'a> {
     handle: &'a io::Stdin,
+    index: u32,
 }
 
 impl<'a> LinesFromStdin<'a> {
     pub fn new(handle: &'a io::Stdin) -> LinesFromStdin {
-        LinesFromStdin { handle }
+        LinesFromStdin { handle, index: 0 }
     }
 }
 
 impl<'a> LineSource for LinesFromStdin<'a> {
-    fn produce(&mut self) -> Option<String> {
+    fn produce(&mut self) -> Option<(String, u32, String)> {
         let mut line: String = String::new();
         
         match self.handle.read_line(&mut line) {
@@ -26,7 +27,7 @@ impl<'a> LineSource for LinesFromStdin<'a> {
                     None
                 }
                 else {
-                    Some(line.trim().to_string())
+                    Some(("".to_string(), 0, line.trim().to_string()))
                 }
             },
             Err(_) => None
@@ -35,20 +36,22 @@ impl<'a> LineSource for LinesFromStdin<'a> {
 }
 
 impl<'a> Iterator for LinesFromStdin<'a> {
-    type Item = String;
-    fn next(&mut self) -> Option<String> {
+    type Item = (String, u32, String);
+    fn next(&mut self) -> Option<(String, u32, String)> {
         self.produce()
     }
 }
 
 pub struct LinesFromFiles<'b> {
     files: &'b mut Vec<String>,
+    current_filename: String,
     reader: Option<BufReader<File>>,
+    index: u32,
 }
 
 impl<'b> LinesFromFiles<'b> {
     pub fn new(files: &'b mut Vec<String>) -> LinesFromFiles {
-        LinesFromFiles { files, reader: None }
+        LinesFromFiles { files, current_filename: "".to_string(), reader: None, index: 0 }
     }
 
     fn is_file_utf8(&mut self, file_path: &String) -> bool {
@@ -73,17 +76,19 @@ impl<'b> LinesFromFiles<'b> {
 }
 
 impl<'b> LineSource for LinesFromFiles<'b> {
-    fn produce(&mut self) -> Option<String> {
+    fn produce(&mut self) -> Option<(String, u32, String)> {
         loop {
             if let Some(reader) = &mut self.reader {
                 if let Some(line) = &reader.lines().next() {
-                    return Some(line.as_ref().unwrap().to_string());
+                    self.index += 1;
+                    return Some((self.current_filename.to_string(), self.index, line.as_ref().unwrap().to_string()));
                 }
                 else {
                     self.reader = None;
                 }
             }
             else {
+                let single_file = self.files.len() == 1;
                 let file_path: String = match self.files.pop() {
                     Some(s) => s,
                     None => return None
@@ -104,8 +109,13 @@ impl<'b> LineSource for LinesFromFiles<'b> {
                         continue
                     }
 
+                    self.current_filename = match single_file {
+                        false => Path::new(&file_path).file_name().unwrap().to_str().unwrap().to_string(),
+                        true => "".to_string(),
+                    };
+
                     if let Ok(file) = File::open(&file_path) {
-                        println!("\n\"{}\":", file_path);
+                        self.index = 0;
                         self.reader = Some(BufReader::new(file));
                     }
                     else {
@@ -118,8 +128,8 @@ impl<'b> LineSource for LinesFromFiles<'b> {
 }
 
 impl<'b> Iterator for LinesFromFiles<'b> {
-    type Item = String;
-    fn next(&mut self) -> Option<String> {
+    type Item = (String, u32, String);
+    fn next(&mut self) -> Option<(String, u32, String)> {
         self.produce()
     }
 }

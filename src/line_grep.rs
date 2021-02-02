@@ -1,17 +1,27 @@
-use regex::Regex;
+use regex::{ self, Regex };
 
 pub struct LineGrep {
-    pattern: String,
-    re: Option<Regex>,
+    re: Regex,
 }
 
 impl LineGrep {
-    pub fn new(pattern: String) -> LineGrep {
-        LineGrep { pattern, re: None }
+    pub fn new(pattern: String) -> Option<LineGrep> {
+        if let Ok(re) = Regex::new(pattern.as_str()) {
+            println!("re: {:?}", re);
+            Some(LineGrep { re: re })
+        }
+        else {
+            None
+        }
     }
 
-    pub fn feed(&mut self, line: String) -> (u32, u32, bool) {
-        println!("input: {}", line);
-        (0, 0, false)
+    pub fn feed(&mut self, line: &String) -> Option<(usize, usize)> {
+        if let Some(matched) = self.re.find(line.as_str()) {
+            Some((matched.start(), matched.end()))
+        }
+        else
+        {
+            None
+        }
     }
 }

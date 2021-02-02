@@ -1,11 +1,12 @@
 extern crate getopts;
 extern crate wild;
 
-use std::io::{ self };
 use std::env;
 use getopts::{ Options };
+use std::io::{ self, Write };
 use std::thread::{ self, JoinHandle };
-use std::sync::{ atomic::{ Ordering, AtomicBool }, mpsc::{ channel, Sender, Receiver }, Arc, Mutex };
+use std::sync::{ atomic::{ Ordering, AtomicBool }, mpsc::{ channel, Sender, Receiver }, Arc };
+use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor, NoColor };
 
 mod line_grep;
 use line_grep::{ LineGrep };
@@ -18,7 +19,6 @@ const AUTHORS: &'static str = env!("CARGO_PKG_AUTHORS");
 
 #[derive(Debug)]
 struct Config {
-    extended_regex: bool,
     ignore_case: bool,
     print_line_nums: bool,
     use_color: bool,
@@ -47,14 +47,12 @@ fn print_usage(opts: &Options) {
 
 fn parse_args(args: &[String]) -> Option<Config> {
     let mut opts = Options::new();
-    opts.optflag("E", "", "PATTERNS are extended regular expressions");
     opts.optflag("i", "", "ignore case distinctions in patterns and data");
     opts.optflag("n", "", "print line number with output lines");
     opts.optflag("", "color", "use markers to highlight the matching strings");
     opts.optflag("", "help", "Print this help menu");
 
     let mut config = Config {
-        extended_regex: false,
         ignore_case: false,
         print_line_nums: false,
         use_color: false,
@@ -73,10 +71,6 @@ fn parse_args(args: &[String]) -> Option<Config> {
     if matches.opt_present("help") {
         print_usage(&opts);
         return None;
-    }
-
-    if matches.opt_present("E") {
-        config.extended_regex = true;
     }
 
     if matches.opt_present("i") {
@@ -105,8 +99,12 @@ fn parse_args(args: &[String]) -> Option<Config> {
     Some(config)
 }
 
-fn  process(source: impl LineSource, pattern: String) {
-    let mut grep = LineGrep::new(pattern);
+fn  process(source: impl LineSource, pattern: String) -> Result<(), String> {
+    let mut grep = match LineGrep::new(pattern) {
+        Some(s) => s,
+        None => return Err("Inavild regular expression!".to_owned())
+    };
+    
     let flag_done = Arc::new(AtomicBool::new(false));
     let flag_exit = Arc::clone(&flag_done);
 
@@ -115,76 +113,92 @@ fn  process(source: impl LineSource, pattern: String) {
     let join_handle: JoinHandle<()> = thread::spawn(move || {
         loop {
             if let Ok(line) = thread_rx_channel.try_recv() {
-                grep.feed(line);
-                main_tx_channel.send("yakitori".to_string()).expect("Error: Sending from grep to main thread failed!");
+                if let Some((start, end)) = grep.feed(&line) {
+                    main_tx_channel.send(line[start..end].to_string()).expect("Error: Sending from grep to main thread failed!");
+                }
+                else{
+                    main_tx_channel.send("".to_string()).expect("Error: Sending from grep to main thread failed!");
+                }
             }
 
             if flag_exit.load(Ordering::Acquire) {
                 break;
             }
-
         }
     });
 
-    for line in source {
+    for (prefix, i, line) in source {
         thread_tx_channel.send(line).expect("Error: Sending from grep to main thread failed!");
         let result = main_rx_channel.recv().expect("Error: Receiving in main thread failed!");
-        println!("result: {}", result);
+        if !result.is_empty() {
+            println!("{}:{}:{}", prefix, i, result);
+        }
     }
 
     flag_done.store(true, Ordering::Release);
     join_handle.join().unwrap();
+    
+    Ok(())
+}
+
+fn print_result(config: &Config, prefix: &String, index: u32, line: String, start: usize, end: usize) -> std::io::Result <()> {
+    let mut stdout = StandardStream::stdout(ColorChoice::Always);
+    stdout.reset();
+
+    if !prefix.is_empty() {
+        if config.use_color {
+            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Magenta)))?;
+        }
+        write!(&mut stdout, "{}", prefix);
+
+        if config.use_color {
+            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Cyan)))?;
+        }
+        write!(&mut stdout, ":");
+    }
+
+    if config.print_line_nums {
+        if config.use_color {
+            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green)))?;
+        }
+        write!(&mut stdout, "{}", index);
+
+        if config.use_color {
+            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Cyan)))?;
+        }
+        
+        write!(&mut stdout, ":");
+    }
+
+    if config.use_color {
+        stdout.reset();
+        write!(&mut stdout, "{}", line[0..start].to_string());
+        stdout.set_color(ColorSpec::new().set_fg(Some(Color::Red)))?;
+        write!(&mut stdout, "{}", line[start..end].to_string());
+        stdout.reset();
+        writeln!(&mut stdout, "{}", line[end..line.len()].to_string());
+    }
+    else {
+        writeln!(&mut stdout, "{}", line);
+    }
+    Ok(())
 }
 
 fn main() -> std::io::Result <()>{
     let args: Vec<String> = wild::args().collect();
     let mut config = parse_args(&args[1..]).unwrap();
 
+    print_result(&config, &"file.txt".to_string(), 2, "This is a sample string we're grepping...".to_string(), 5, 15);
+
     let stdin_handle = io::stdin();
-
     if config.files.is_empty() {
-        process(LinesFromStdin::new(&stdin_handle), config.pattern.unwrap());
+        let _ = process(LinesFromStdin::new(&stdin_handle), config.pattern.unwrap())
+                    .map_err(|e|  return e);
     }
     else {
-        process(LinesFromFiles::new(&mut config.files), config.pattern.unwrap());
+        let _ = process(LinesFromFiles::new(&mut config.files), config.pattern.unwrap())
+                    .map_err(|e|  return e);
     }
 
-    /*
-    let mut grep: LineGrep;
-    if let Some(pattern) = config.pattern {
-        grep = LineGrep::new(pattern);
-    }
-    else {
-        panic!("lakht pakht");
-    }
-
-    let flag_done = Arc::new(AtomicBool::new(false));
-    let flag_exit = Arc::clone(&flag_done);
-
-    let (main_tx_channel, main_rx_channel): (Sender<String>, Receiver<String>) = channel();
-    let (thread_tx_channel, thread_rx_channel): (Sender<String>, Receiver<String>) = channel();
-    let join_handle: JoinHandle<()> = thread::spawn(move || {
-        loop {
-            if let Ok(line) = thread_rx_channel.try_recv() {
-                grep.feed(line);
-                main_tx_channel.send("yakitori".to_string()).expect("Error: Sending from grep to main thread failed!");
-            }
-
-            if flag_exit.load(Ordering::Acquire) {
-                break;
-            }
-
-        }
-    });
-
-    for line in source {
-        thread_tx_channel.send(line).expect("Error: Sending from grep to main thread failed!");
-        let result = main_rx_channel.recv().expect("Error: Receiving in main thread failed!");
-        println!("result: {}", result);
-    }
-
-    flag_done.store(true, Ordering::Release);
-    join_handle.join().unwrap();
-    */
     Ok(())
 }
