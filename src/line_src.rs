@@ -27,7 +27,8 @@ impl<'a> LineSource for LinesFromStdin<'a> {
                     None
                 }
                 else {
-                    Some(("".to_string(), 0, line.trim().to_string()))
+                    self.index += 1;
+                    Some(("".to_string(), self.index, line.trim().to_string()))
                 }
             },
             Err(_) => None
@@ -44,6 +45,7 @@ impl<'a> Iterator for LinesFromStdin<'a> {
 
 pub struct LinesFromFiles<'b> {
     files: &'b mut Vec<String>,
+    emit_filename: bool,
     current_filename: String,
     reader: Option<BufReader<File>>,
     index: u32,
@@ -51,7 +53,14 @@ pub struct LinesFromFiles<'b> {
 
 impl<'b> LinesFromFiles<'b> {
     pub fn new(files: &'b mut Vec<String>) -> LinesFromFiles {
-        LinesFromFiles { files, current_filename: "".to_string(), reader: None, index: 0 }
+        let num_files = files.len();
+        LinesFromFiles {
+            files, 
+            emit_filename: num_files > 1,
+            current_filename: "".to_string(),
+            reader: None,
+            index: 0,
+        }
     }
 
     fn is_file_utf8(&mut self, file_path: &String) -> bool {
@@ -88,7 +97,6 @@ impl<'b> LineSource for LinesFromFiles<'b> {
                 }
             }
             else {
-                let single_file = self.files.len() == 1;
                 let file_path: String = match self.files.pop() {
                     Some(s) => s,
                     None => return None
@@ -109,9 +117,9 @@ impl<'b> LineSource for LinesFromFiles<'b> {
                         continue
                     }
 
-                    self.current_filename = match single_file {
-                        false => Path::new(&file_path).file_name().unwrap().to_str().unwrap().to_string(),
-                        true => "".to_string(),
+                    self.current_filename = match self.emit_filename {
+                        true => Path::new(&file_path).file_name().unwrap().to_str().unwrap().to_string(),
+                        false => "".to_string(),
                     };
 
                     if let Ok(file) = File::open(&file_path) {
