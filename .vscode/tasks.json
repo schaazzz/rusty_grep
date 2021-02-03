@@ -49,6 +49,17 @@
 			"group": "build",
 			"label": "Rust: cargo clean all - rusty_grep",
 			"problemMatcher": []
-		}
+		},
+		{
+			"type": "shell",
+			"command": "cargo",
+			"args": [
+				"test",
+				"--verbose"
+			],
+			"group": "test",
+			"label": "Rust: cargo run tests - rusty_grep",
+			"problemMatcher": []
+		},
 	]
 }
