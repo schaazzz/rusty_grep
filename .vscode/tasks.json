@@ -1,0 +1,54 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "shell",
+			"command": "cargo",
+			"args": [
+				"build",
+				"--target=i686-pc-windows-msvc"
+			],
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "Rust: cargo build 32 - rusty_grep"
+		},
+		{
+			"type": "shell",
+			"command": "cargo",
+			"args": [
+				"build",
+				"--target=x86_64-pc-windows-msvc"
+			],
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "Rust: cargo build 64 - rusty_grep"
+		},
+		{
+			"type": "shell",
+			"dependsOn": [
+				"Rust: cargo build 32 - rusty_grep",
+				"Rust: cargo build 64 - rusty_grep"
+			],
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "Rust: cargo build all - rusty_grep"
+		},
+		{
+			"type": "shell",
+			"command": "cargo",
+			"args": [
+				"clean",
+				"--verbose"
+			],
+			"group": "build",
+			"label": "Rust: cargo clean all - rusty_grep",
+			"problemMatcher": []
+		}
+	]
+}
