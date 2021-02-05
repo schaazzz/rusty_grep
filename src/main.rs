@@ -140,7 +140,7 @@ fn  process(source: impl LineSource, flags: &Flags, pattern: String) -> Result<(
         let (start, end) = main_rx_channel.recv().expect("Error: Receiving in main thread failed!");
         
         if start != end {
-            match print_matched_line(flags, &prefix, index , line, start as usize, end as usize) {
+            match print_matched_line(flags, prefix, index , line, start as usize, end as usize) {
                 Ok(_) => (),
                 Err(e) => return Err(format!("Error: {}", e.to_string()))
             }
@@ -153,7 +153,7 @@ fn  process(source: impl LineSource, flags: &Flags, pattern: String) -> Result<(
     Ok(())
 }
 
-fn print_matched_line(flags: &Flags, prefix: &String, index: u32, line: String, start: usize, end: usize) -> std::io::Result <()> {
+fn print_matched_line(flags: &Flags, prefix: String, index: u32, line: String, start: usize, end: usize) -> std::io::Result <()> {
     let mut stdout = StandardStream::stdout(ColorChoice::Always);
     stdout.reset()?;
 
