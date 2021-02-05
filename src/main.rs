@@ -178,7 +178,6 @@ fn print_matched_line(flags: &Flags, prefix: String, index: u32, line: String, s
         if flags.use_color {
             stdout.set_color(ColorSpec::new().set_fg(Some(Color::Cyan)))?;
         }
-        
         write!(&mut stdout, ":")?;
     }
 
