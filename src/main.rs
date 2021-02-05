@@ -121,7 +121,7 @@ fn  process(source: impl LineSource, flags: &Flags, pattern: String) -> Result<(
     let join_handle: JoinHandle<()> = thread::spawn(move || {
         loop {
             if let Ok(line) = thread_rx_channel.try_recv() {
-                if let Some((start, end)) = grep.feed(&line) {
+                if let Some((start, end)) = grep.search(&line) {
                     main_tx_channel.send((start, end)).expect("Error: Sending from grep to main thread failed!");
                 }
                 else{
