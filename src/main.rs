@@ -42,12 +42,16 @@ fn print_error(error: String, force_exit: bool) {
     }
 }
 
-fn print_usage(opts: &Options) {
+fn print_usage(opts: &Options, print_about: bool) {
     println!("---");
-    println!("{}, v{}", DESCRIPTION, VERSION);
-    println!("{}", AUTHORS);
-    println!("");
-    println!("{}", opts.usage("Usage:"));
+
+    if print_about {
+        println!("{}, v{}", DESCRIPTION, VERSION);
+        println!("{}", AUTHORS);
+        println!("");
+    }
+
+    println!("{}", opts.usage("Usage: rusty_grep [OPTION]... PATTERNS [FILE]..."));
     println!("---");
 }
 
@@ -71,13 +75,13 @@ fn parse_args(args: &[String]) -> Option<Config> {
     let matches = match opts.parse(args) {
         Ok(o) => o,
         Err(_) => {
-            print_usage(&opts);
+            print_usage(&opts, true);
             return None;
         }
     };
 
     if matches.opt_present("help") {
-        print_usage(&opts);
+        print_usage(&opts, true);
         return None;
     }
 
@@ -94,7 +98,9 @@ fn parse_args(args: &[String]) -> Option<Config> {
     }
 
     if matches.free.is_empty() {
-        println!("this is wrong!");
+        println!("Error: Pattern cannot be empty!");
+        print_usage(&opts, false);
+        return None;
     }
     else {
         config.pattern = Some(matches.free[0].to_string());
@@ -198,7 +204,11 @@ fn print_matched_line(flags: &Flags, prefix: String, index: u32, line: String, s
 
 fn main() -> std::io::Result <()>{
     let args: Vec<String> = wild::args().collect();
-    let mut config = parse_args(&args[1..]).unwrap();
+    
+    let mut config = match parse_args(&args[1..]) {
+        Some(s) => s,
+        None => std::process::exit(0)
+    };
 
     //print_result(&config, &"file.txt".to_string(), 2, "This is a sample string we're grepping...".to_string(), 5, 15);
 
