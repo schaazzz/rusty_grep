@@ -210,8 +210,6 @@ fn main() -> std::io::Result <()>{
         None => std::process::exit(0)
     };
 
-    //print_result(&config, &"file.txt".to_string(), 2, "This is a sample string we're grepping...".to_string(), 5, 15);
-
     let stdin_handle = io::stdin();
     if config.files.is_empty() {
         let _ = process(
