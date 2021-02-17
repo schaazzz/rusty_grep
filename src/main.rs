@@ -113,6 +113,49 @@ fn parse_args(args: &[String]) -> Option<Config> {
     Some(config)
 }
 
+fn print_matched_line(flags: &Flags, prefix: String, index: u32, line: String, start: usize, end: usize) -> std::io::Result <()> {
+    let mut stdout = StandardStream::stdout(ColorChoice::Always);
+    stdout.reset()?;
+
+    if !prefix.is_empty() {
+        if flags.use_color {
+            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Magenta)))?;
+        }
+        write!(&mut stdout, "{}", prefix)?;
+
+        if flags.use_color {
+            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Cyan)))?;
+        }
+        write!(&mut stdout, ":")?;
+    }
+
+    if flags.print_line_nums {
+        if flags.use_color {
+            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green)))?;
+        }
+        write!(&mut stdout, "{}", index)?;
+
+        if flags.use_color {
+            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Cyan)))?;
+        }
+        write!(&mut stdout, ":")?;
+    }
+
+    if flags.use_color {
+        stdout.reset()?;
+        write!(&mut stdout, "{}", line[0..start].to_string())?;
+        stdout.set_color(ColorSpec::new().set_fg(Some(Color::Red)))?;
+        write!(&mut stdout, "{}", line[start..end].to_string())?;
+        stdout.reset()?;
+        writeln!(&mut stdout, "{}", line[end..line.len()].to_string())?;
+    }
+    else {
+        writeln!(&mut stdout, "{}", line)?;
+    }
+
+    Ok(())
+}
+
 fn  process(source: impl LineSource, flags: &Flags, pattern: String) -> Result<(), String> {
     let mut grep = match LineGrep::new(pattern, flags.ignore_case) {
         Ok(o) => o,
@@ -156,49 +199,6 @@ fn  process(source: impl LineSource, flags: &Flags, pattern: String) -> Result<(
     flag_done.store(true, Ordering::Release);
     join_handle.join().unwrap();
     
-    Ok(())
-}
-
-fn print_matched_line(flags: &Flags, prefix: String, index: u32, line: String, start: usize, end: usize) -> std::io::Result <()> {
-    let mut stdout = StandardStream::stdout(ColorChoice::Always);
-    stdout.reset()?;
-
-    if !prefix.is_empty() {
-        if flags.use_color {
-            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Magenta)))?;
-        }
-        write!(&mut stdout, "{}", prefix)?;
-
-        if flags.use_color {
-            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Cyan)))?;
-        }
-        write!(&mut stdout, ":")?;
-    }
-
-    if flags.print_line_nums {
-        if flags.use_color {
-            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green)))?;
-        }
-        write!(&mut stdout, "{}", index)?;
-
-        if flags.use_color {
-            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Cyan)))?;
-        }
-        write!(&mut stdout, ":")?;
-    }
-
-    if flags.use_color {
-        stdout.reset()?;
-        write!(&mut stdout, "{}", line[0..start].to_string())?;
-        stdout.set_color(ColorSpec::new().set_fg(Some(Color::Red)))?;
-        write!(&mut stdout, "{}", line[start..end].to_string())?;
-        stdout.reset()?;
-        writeln!(&mut stdout, "{}", line[end..line.len()].to_string())?;
-    }
-    else {
-        writeln!(&mut stdout, "{}", line)?;
-    }
-
     Ok(())
 }
 
